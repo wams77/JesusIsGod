@@ -46,7 +46,7 @@ jobs:
           git config --global user.name 'Bot Editor AI'
           git config --global user.email 'bot@actions.github.com'
           
-          touch history_verses.txt 
+          touch history_verses.txt
           
           git add history_verses.txt
           git diff --quiet && git diff --staged --quiet || git commit -m "update memori ayat alkitab"
