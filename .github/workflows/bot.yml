@@ -2,7 +2,8 @@ name: Auto Ayat Alkitab Reels Bot
 
 on:
   schedule:
-    - cron: '30 9 * * *' # Berjalan otomatis pukul 16:30 WIB setiap hari
+    # Berjalan otomatis dua kali sehari: Pukul 05:00 WITA (21:00 UTC) dan 17:00 WITA (09:00 UTC)
+    - cron: '0 21,9 * * *' 
   workflow_dispatch: # Memunculkan tombol "Run workflow" untuk eksekusi manual
 
 # Memberikan izin kepada bot untuk menulis/mengubah file history di repositori
