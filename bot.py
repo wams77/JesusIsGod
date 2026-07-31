@@ -40,7 +40,7 @@ def mark_verse_as_used(verse_ref):
         f.write(f"{verse_ref}\n")
 
 # --- 1. GROQ AI: GENERATOR AYAT ALKITAB & RENUNGAN ---
-def generate_dynamic_content(num_videos=2):
+def generate_dynamic_content(num_videos=5):
     print(f"🕊️ Meminta Groq Llama-3.3 meracik {num_videos} naskah ayat Alkitab & kueri Pexels...")
     
     used_verses = get_used_verses()
@@ -435,7 +435,7 @@ if __name__ == "__main__":
         print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
         bg_music_file = None
     
-    generated_batch = generate_dynamic_content(num_videos=2)
+    generated_batch = generate_dynamic_content(num_videos=5)
     
     print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
     
