@@ -427,7 +427,7 @@ def upload_to_facebook(video_path, caption, index):
 
 # --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("⚡ MEMULAI BOT AYAT ALKITAB GROQ AI (5 VIDEO) ⚡\n")
+    print("⚡ MEMULAI BOT AYAT ALKITAB GROQ AI (2 VIDEO) ⚡\n")
     
     # Deteksi file musik latar opsional (letakkan file 'bg_music.mp3' di folder utama jika ingin pakai musik)
     bg_music_file = os.path.join(BASE_DIR, "bg_music.mp3")
@@ -435,13 +435,13 @@ if __name__ == "__main__":
         print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
         bg_music_file = None
     
-    generated_batch = generate_dynamic_content(num_videos=5)
+    generated_batch = generate_dynamic_content(num_videos=2)
     
     print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
     
     for i, item in enumerate(generated_batch, 1):
         try:
-            print(f"--- MENGERJAKAN VIDEO {i} DARI 5 ---")
+            print(f"--- MENGERJAKAN VIDEO {i} DARI 2 ---")
             
             # Mengonversi referensi agar suara AI membacanya dengan benar (Cth: Yeremia 4:3 -> Yeremia ayat 3)
             clean_spoken_ref = fix_verse_for_tts(item['ref'])
