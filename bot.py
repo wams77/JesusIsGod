@@ -303,7 +303,15 @@ def render_short_video(bg_video_path, audio_path, item, output_video, index):
     video = CompositeVideoClip([video_clip, overlay, txt_clip, progress_bar]).with_audio(audio)
     
     try:
-        video.write_videofile(output_video, fps=24, codec="libx264", audio_codec="aac", preset="ultrafast")
+        # PERBAIKAN UTAMA: Menambahkan parameter pixel_format="yuv420p" agar file tidak 0 byte di Linux
+        video.write_videofile(
+            output_video, 
+            fps=24, 
+            codec="libx264", 
+            audio_codec="aac", 
+            preset="ultrafast",
+            pixel_format="yuv420p"
+        )
     except Exception as e:
         print(f"⚠️ FFmpeg Error pada video {index}: {e}")
     
