@@ -279,6 +279,13 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
 # --- 5. EDITOR VIDEO UTAMA ---
 def render_short_video(bg_video_path, audio_path, item, output_video, index):
     print(f"[{index}/5] 🎬 Merakit video latar Pexels & Teks...")
+    
+    # Validasi file sumber sebelum dirender
+    if not os.path.exists(audio_path) or os.path.getsize(audio_path) < 1000:
+        raise Exception(f"File audio {audio_path} tidak valid atau kosong!")
+    if not os.path.exists(bg_video_path) or os.path.getsize(bg_video_path) < 50000:
+        raise Exception(f"File video latar {bg_video_path} tidak valid atau kosong!")
+
     audio = AudioFileClip(audio_path)
     video_duration = audio.duration + 1.5 
     
@@ -295,6 +302,10 @@ def render_short_video(bg_video_path, audio_path, item, output_video, index):
     
     txt_img_path = os.path.join(BASE_DIR, f"text_overlay_temp_{index}.png")
     create_text_overlay_image(item, txt_img_path)
+    
+    if not os.path.exists(txt_img_path) or os.path.getsize(txt_img_path) == 0:
+        raise Exception("Gagal membuat gambar overlay teks!")
+        
     txt_clip = ImageClip(txt_img_path).with_duration(video_duration)
     
     progress_bar = ColorClip(size=(1080, 15), color=(255, 215, 0)).with_duration(video_duration)
@@ -303,13 +314,14 @@ def render_short_video(bg_video_path, audio_path, item, output_video, index):
     video = CompositeVideoClip([video_clip, overlay, txt_clip, progress_bar]).with_audio(audio)
     
     try:
-        # PERBAIKAN UTAMA: Menambahkan parameter pixel_format="yuv420p" agar file tidak 0 byte di Linux
+        # Menggunakan preset "medium" agar enkoding lebih stabil dan menghindari file 0 byte
         video.write_videofile(
             output_video, 
             fps=24, 
             codec="libx264", 
             audio_codec="aac", 
-            preset="ultrafast",
+            preset="medium",
+            audio_fps=44100,
             pixel_format="yuv420p"
         )
     except Exception as e:
