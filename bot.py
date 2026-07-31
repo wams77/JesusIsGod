@@ -40,7 +40,7 @@ def mark_verse_as_used(verse_ref):
         f.write(f"{verse_ref}\n")
 
 # --- 1. GROQ AI: GENERATOR AYAT ALKITAB & RENUNGAN ---
-def generate_dynamic_content(num_videos=5):
+def generate_dynamic_content(num_videos=2):
     print(f"🕊️ Meminta Groq Llama-3.3 meracik {num_videos} naskah ayat Alkitab & kueri Pexels...")
     
     used_verses = get_used_verses()
