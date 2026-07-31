@@ -3,6 +3,7 @@ import time
 import random
 import requests
 import urllib.parse
+import subprocess
 import gc
 from groq import Groq
 from moviepy import AudioFileClip, VideoFileClip, CompositeVideoClip, ColorClip, ImageClip, concatenate_videoclips
@@ -152,7 +153,6 @@ def download_pexels_video(query, output_filename):
     except Exception as e:
         print(f"⚠️ Peringatan unduhan Pexels: {e}")
 
-    # Fallback aman jika gagal/korup
     print("⚠️ Menggunakan video latar cadangan universal yang tenang...")
     fallback_url = "https://api.pexels.com/videos/search?query=peaceful+nature+sunset+drone&orientation=portrait&per_page=1"
     fallback_res = requests.get(fallback_url, headers=headers).json()
@@ -167,11 +167,17 @@ def download_pexels_video(query, output_filename):
         
     raise Exception("Gagal total mengunduh video dari Pexels API.")
 
-# --- 3. AI NEURAL VOICE (SUARA RAMAH & SEJUK) ---
+# --- 3. AI NEURAL VOICE (MENGGUNAKAN SUBPROCESS AGAR AMAN DARI ERROR TERMINAL) ---
 def generate_ai_voice(full_text, index, output_audio):
     print(f"[{index}/5] 🎙️ Menyuarakan firman Tuhan...")
-    command = f'edge-tts --voice id-ID-ArdiNeural --rate=-5% --text "{full_text}" --write-media {output_audio}'
-    os.system(command)
+    cmd = [
+        "edge-tts",
+        "--voice", "id-ID-ArdiNeural",
+        "--rate", "-5%",
+        "--text", full_text,
+        "--write-media", output_audio
+    ]
+    subprocess.run(cmd, check=True)
     return output_audio
 
 # --- 4. TEXT OVERLAY GENERATOR (DYNAMIC FLOW LAYOUT) ---
@@ -212,7 +218,6 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
     lines_renungan = wrap_text(item['renungan'], font_renungan)
     lines_cta = wrap_text(f"💬 {item['cta']}", font_cta)
     
-    # --- POSISI MENGALIR DINAMIS (ANTI TABRAKAN) ---
     y = 380  # Posisi awal untuk Referensi Kitab
 
     # 1. Render Referensi Kitab (Warna Emas/Gold)
@@ -229,7 +234,7 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
 
     y += 25  # Jarak aman
 
-    # 2. Render Ayat Alkitab (Warna Putih - Tanda Kutip)
+    # 2. Render Ayat Alkitab (Warna Putih)
     for line in lines_ayat:
         try:
             w = draw.textlength(line, font=font_ayat)
@@ -243,7 +248,7 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
 
     y += 35  # Jarak aman ke renungan
 
-    # 3. Render Renungan Singkat (Warna Abu-abu Terang / Silver)
+    # 3. Render Renungan Singkat (Warna Silver)
     for line in lines_renungan:
         try:
             w = draw.textlength(line, font=font_renungan)
@@ -323,7 +328,7 @@ def render_short_video(bg_video_path, audio_path, item, output_video, index):
         
     return output_video, video_duration
 
-# --- 6. FACEBOOK/YOUTUBE UPLOADER ---
+# --- 6. FACEBOOK UPLOADER ---
 def upload_to_facebook(video_path, caption, index):
     print(f"[{index}/5] 🚀 Mengunggah ke Facebook Reels...")
     page_id = os.environ.get("FB_PAGE_ID")
@@ -375,7 +380,7 @@ if __name__ == "__main__":
     
     generated_batch = generate_dynamic_content(num_videos=5)
     
-    print(f"⚡ MEMPROSES {len(selected_batch) if 'selected_batch' in locals() else 5} VIDEO BARU ⚡\n")
+    print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
     
     for i, item in enumerate(generated_batch, 1):
         try:
@@ -405,5 +410,5 @@ if __name__ == "__main__":
                 time.sleep(60)
                 
         except Exception as e:
-            print(f"❌ Kesalahan pada video {i}: {e}\n")
+            print(f"❌ Kesalahan pada video ke-{i}: {e}\n")
             gc.collect()
