@@ -1,17 +1,16 @@
-name: Auto Ayat Alkitab Reels Bot
+name: Auto Bible Reels Bot
 
 on:
   schedule:
     # Berjalan otomatis dua kali sehari: Pukul 05:00 WITA (21:00 UTC) dan 17:00 WITA (09:00 UTC)
     - cron: '0 21,9 * * *' 
-  workflow_dispatch: # Memunculkan tombol "Run workflow" untuk eksekusi manual
+  workflow_dispatch:
 
-# Memberikan izin kepada bot untuk menulis/mengubah file history di repositori
 permissions:
   contents: write
 
 jobs:
-  build-and-deploy:
+  build-and-deploy-bible:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -22,22 +21,23 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Mesin Grafis & Video (ImageMagick & FFmpeg)
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick ffmpeg
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
 
-      - name: Install Dependencies
+      - name: Install Python Packages
         run: |
           python -m pip install --upgrade pip
-          pip install edge-tts moviepy requests google-api-python-client google-auth-oauthlib google-auth-httplib2 groq pillow
+          # Menambahkan beautifulsoup4 ke dalam daftar instalasi pip
+          pip install moviepy requests pillow edge-tts groq beautifulsoup4
 
-      - name: Eksekusi Bot Produksi
+      - name: Jalankan Bot Firman Tuhan
         env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
           python bot.py
