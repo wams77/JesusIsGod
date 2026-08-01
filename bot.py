@@ -39,27 +39,27 @@ def mark_verse_as_used(verse_ref):
     with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
         f.write(f"{verse_ref}\n")
 
-# --- 1. GROQ AI: GENERATOR AYAT ALKITAB & PEXELS QUERY ---
-def generate_dynamic_content(num_videos=2): # Diubah default menjadi 2 video agar hemat token
+# --- 1. GROQ AI: GENERATOR 3 VIDEO ---
+def generate_dynamic_content(num_videos=3):
     print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik {num_videos} naskah Firman Tuhan & kueri video Pexels...")
     
     used_verses = get_used_verses()
-    history_context = "\n".join(used_verses[-25:]) if used_verses else "(Belum ada riwayat, buat topik bebas)"
+    history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat, buat topik bebas)"
     
     prompt = f"""
     Bertindaklah sebagai pembuat konten rohani Kristen yang mendalam, penuh kasih, dan menguatkan iman.
     Buatlah {num_videos} naskah video pendek (Reels) berisi ayat Alkitab beserta renungan singkat yang menyejukkan hati.
     
-    ATURAN MUTLAK ANTI-DUPLIKASI: 
-    Dilarang keras membuat naskah dengan referensi ayat atau tema yang mirip dengan daftar ayat yang sudah pernah dibuat ini:
-    {history_context}
+    ATURAN MUTLAK: 
+    1. Kalimat renungan HARUS SANGAT SINGKAT, padat, puitis, maksimal 1 kalimat pendek agar muat di layar video.
+    2. Dilarang keras membuat naskah dengan referensi ayat atau tema yang mirip dengan daftar ini: {history_context}
     
     Gunakan pemisah '---' antar naskah. Format wajib persis seperti ini:
     
-    REF: [Referensi Kitab dan Ayat, contoh: Yesaya 41:10 / Filipi 4:6-7 / Mazmur 23:1-3]
+    REF: [Referensi Kitab dan Ayat, contoh: Yesaya 41:10]
     AYAT: [Isi ayat Alkitab yang menyentuh hati dan relevan]
-    RENUNGAN: [2-3 kalimat renungan singkat yang menguatkan iman dan mendalam tentang kasih Tuhan]
-    CTA: [Ajakan interaksi singkat, contoh: Tulis 'Amin' di komentar jika kamu percaya.]
+    RENUNGAN: [1 kalimat pendek renungan yang menguatkan iman]
+    CTA: [Ajakan interaksi singkat, contoh: Tulis 'Amin' di komentar.]
     PEXELS_QUERY: [Kata kunci bahasa Inggris untuk mencari video background rohani/tenang di Pexels, contoh: "peaceful mountain sunrise cinematic drone", "calm ocean waves sunset cinematic"]
     """
     
@@ -71,7 +71,6 @@ def generate_dynamic_content(num_videos=2): # Diubah default menjadi 2 video aga
                     {"role": "system", "content": "Anda adalah asisten AI rohani yang patuh pada format instruksi."},
                     {"role": "user", "content": prompt}
                 ],
-                # Menggunakan model 8b-instant yang jauh lebih hemat token dan bebas limit harian ketat
                 model="llama-3.1-8b-instant",
                 temperature=0.7,
                 max_tokens=1500,
@@ -82,7 +81,7 @@ def generate_dynamic_content(num_videos=2): # Diubah default menjadi 2 video aga
             print(f"⚠️ Error Groq (Percobaan {attempt+1}/3): {e}")
             time.sleep(15)
     else:
-        raise Exception("❌ Gagal total menghubungi Groq AI karena batas kuota terlampaui. Harap tunggu beberapa jam atau kurangi jumlah video.")
+        raise Exception("❌ Gagal total menghubungi Groq AI.")
 
     batch = []
     for i, chunk in enumerate(raw_text.split("---")):
@@ -90,9 +89,9 @@ def generate_dynamic_content(num_videos=2): # Diubah default menjadi 2 video aga
         lines = [line.strip() for line in chunk.strip().split("\n") if line.strip()]
         if not lines: continue
         
-        ref = "YESAYA 41:10"
+        ref = f"YESAYA 4{i}:10"
         ayat = "Janganlah takut, sebab Aku menyertai engkau."
-        renungan = "Tuhan tidak pernah meninggalkanmu berjalan sendirian."
+        renungan = "Tuhan tidak pernah meninggalkanmu."
         cta = "Ketik 'Amin' di komentar."
         pexels_query = "peaceful mountain sunrise cinematic drone"
         
@@ -133,7 +132,7 @@ def get_custom_font():
             raise Exception(f"Gagal mengunduh font. Status Code: {r.status_code}")
     return os.path.abspath(font_filename)
 
-# --- 2. PEXELS VIDEO DOWNLOADER DENGAN CADANGAN ---
+# --- 2. PEXELS VIDEO DOWNLOADER ---
 def download_pexels_video(query, output_filename):
     print(f"🎬 Mencari video latar rohani di Pexels untuk: '{query}'...")
     api_key = os.environ.get("PEXELS_API_KEY")
@@ -195,16 +194,17 @@ def generate_ai_voice(full_text, index, output_audio):
     subprocess.run(cmd, check=True)
     return output_audio
 
-# --- 4. TEXT OVERLAY GENERATOR (MAKSIMAL 3 KATA PER BARIS & RATA TENGAH) ---
+# --- 4. TEXT OVERLAY GENERATOR (UKURAN FONT DIPERBESAR) ---
 def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
     img = Image.new("RGBA", img_size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     font_path = get_custom_font()
-    font_ref = ImageFont.truetype(font_path, 42)
-    font_ayat = ImageFont.truetype(font_path, 34)
-    font_renungan = ImageFont.truetype(font_path, 32)
-    font_cta = ImageFont.truetype(font_path, 32)
+    # UKURAN FONT DIPERBESAR AGAR SANGAT JELAS DIBACA DI LAYAR HP
+    font_ref = ImageFont.truetype(font_path, 60)
+    font_ayat = ImageFont.truetype(font_path, 48)
+    font_renungan = ImageFont.truetype(font_path, 42)
+    font_cta = ImageFont.truetype(font_path, 40)
     
     def chunk_text_by_word_count(text, words_per_line=3):
         words = text.split()
@@ -219,7 +219,7 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
     lines_renungan = chunk_text_by_word_count(item['renungan'], words_per_line=3)
     lines_cta = chunk_text_by_word_count(f"💬 {item['cta']}", words_per_line=3)
     
-    y = 280  
+    y = 300  
 
     for line in lines_ref:
         try:
@@ -227,10 +227,10 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         except AttributeError:
             w = draw.textbbox((0, 0), line, font=font_ref)[2]
         x = (img_size[0] - w) // 2
-        for ax, ay in [(-3,0), (3,0), (0,-3), (0,3), (-3,-3), (3,3), (-3,3), (3,-3)]:
+        for ax, ay in [(-4,0), (4,0), (0,-4), (0,4), (-4,-4), (4,4), (-4,4), (4,-4)]:
             draw.text((x + ax, y + ay), line, font=font_ref, fill="black")
         draw.text((x, y), line, font=font_ref, fill="#FFD700")
-        y += 65
+        y += 85
 
     y += 20  
 
@@ -240,10 +240,10 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         except AttributeError:
             w = draw.textbbox((0, 0), line, font=font_ayat)[2]
         x = (img_size[0] - w) // 2
-        for ax, ay in [(-3,0), (3,0), (0,-3), (0,3), (-3,-3), (3,3), (-3,3), (3,-3)]:
+        for ax, ay in [(-4,0), (4,0), (0,-4), (0,4), (-4,-4), (4,4), (-4,4), (4,-4)]:
             draw.text((x + ax, y + ay), line, font=font_ayat, fill="black")
         draw.text((x, y), line, font=font_ayat, fill="white")
-        y += 48
+        y += 70
 
     y += 30  
 
@@ -253,10 +253,10 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         except AttributeError:
             w = draw.textbbox((0, 0), line, font=font_renungan)[2]
         x = (img_size[0] - w) // 2
-        for ax, ay in [(-3,0), (3,0), (0,-3), (0,3), (-3,-3), (3,3), (-3,3), (3,-3)]:
+        for ax, ay in [(-4,0), (4,0), (0,-4), (0,4), (-4,-4), (4,4), (-4,4), (4,-4)]:
             draw.text((x + ax, y + ay), line, font=font_renungan, fill="black")
         draw.text((x, y), line, font=font_renungan, fill="#E0E0E0")
-        y += 44
+        y += 60
 
     y_cta = 1500
     for line in lines_cta:
@@ -265,10 +265,10 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         except AttributeError:
             w = draw.textbbox((0, 0), line, font=font_cta)[2]
         x = (img_size[0] - w) // 2
-        for ax, ay in [(-3,0), (3,0), (0,-3), (0,3), (-3,-3), (3,3), (-3,3), (3,-3)]:
+        for ax, ay in [(-4,0), (4,0), (0,-4), (0,4), (-4,-4), (4,4), (-4,4), (4,-4)]:
             draw.text((x + ax, y_cta + ay), line, font=font_cta, fill="black")
         draw.text((x, y_cta), line, font=font_cta, fill="cyan")
-        y_cta += 42
+        y_cta += 55
 
     img.save(output_path)
     return output_path
@@ -400,15 +400,15 @@ def upload_to_facebook(video_path, caption, index):
 
 # --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("⚡ MEMULAI BOT AYAT ALKITAB GROQ AI (2 VIDEO) ⚡\n")
+    print("⚡ MEMULAI BOT AYAT ALKITAB GROQ AI (3 VIDEO) ⚡\n")
     
     bg_music_file = os.path.join(BASE_DIR, "bg_music.mp3")
     if not os.path.exists(bg_music_file):
         print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
         bg_music_file = None
     
-    # Menghasilkan 2 video per eksekusi agar aman dari limit token harian Groq AI
-    generated_batch = generate_dynamic_content(num_videos=2)
+    # Menghasilkan 3 video per eksekusi
+    generated_batch = generate_dynamic_content(num_videos=3)
     
     print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
     
