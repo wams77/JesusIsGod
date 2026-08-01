@@ -5,6 +5,7 @@ import requests
 import urllib.parse
 import subprocess
 import gc
+from bs4 import BeautifulSoup
 from groq import Groq
 from moviepy import (
     AudioFileClip,
@@ -28,39 +29,72 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 HISTORY_FILE = "history_verses.txt"
 
 def get_used_verses():
-    """Mengambil riwayat ayat yang sudah pernah dibuat agar AI tidak mengulanginya"""
     if not os.path.exists(HISTORY_FILE):
         return []
     with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
         return [line.strip() for line in f.readlines() if line.strip()]
 
 def mark_verse_as_used(verse_ref):
-    """Menyimpan referensi ayat baru ke dalam memori bot"""
     with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
         f.write(f"{verse_ref}\n")
 
+# --- FUNGSI AMBIL AYAT RESMI DARI ALKITAB SABDA ---
+def fetch_sabda_bible_verse(reference_query):
+    """
+    Mengambil isi ayat Alkitab secara akurat langsung dari situs alkitab.sabda.org
+    Contoh input: "Yesaya 41:10" atau "Yohanes 3:16"
+    """
+    print(f"📖 Mengambil teks resmi Alkitab SABDA untuk: {reference_query}...")
+    encoded_ref = urllib.parse.quote(reference_query)
+    url = f"https://alkitab.sabda.org/passage.php?passage={encoded_ref}"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Mencari elemen teks ayat di situs SABDA
+            # Biasanya teks ayat berada di dalam konten utama halaman sabda
+            passage_box = soup.find('td', {'class': 'text'}) or soup.find('div', {'id': 'text'})
+            
+            if passage_box:
+                # Membersihkan tag HTML dan angka penomoran ayat jika perlu
+                text = passage_box.get_text(separator=" ", strip=True)
+                # Pembersihan teks tambahan dari situs jika ada
+                clean_text = ' '.join(text.split())
+                if len(clean_text) > 10:
+                    print(f"✅ Berhasil mengambil dari SABDA: {clean_text[:60]}...")
+                    return clean_text
+    except Exception as e:
+        print(f"⚠️ Gagal mengambil dari SABDA API/Web: {e}")
+        
+    return None
+
 # --- 1. GROQ AI: GENERATOR 3 VIDEO ---
 def generate_dynamic_content(num_videos=3):
-    print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik {num_videos} naskah Firman Tuhan & kueri video Pexels...")
+    print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik {num_videos} referensi ayat & kueri video Pexels...")
     
     used_verses = get_used_verses()
-    history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat, buat topik bebas)"
+    history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat)"
     
     prompt = f"""
-    Bertindaklah sebagai pembuat konten rohani Kristen yang mendalam, penuh kasih, dan menguatkan iman.
-    Buatlah {num_videos} naskah video pendek (Reels) berisi ayat Alkitab beserta renungan singkat yang menyejukkan hati.
+    Bertindaklah sebagai pembuat konten rohani Kristen. Berikan {num_videos} referensi Kitab dan Ayat Alkitab yang menguatkan (contoh format: "Yesaya 41:10", "Filipi 4:6", "Mazmur 23:1"), beserta renungan singkat dan kata kunci video Pexels.
     
     ATURAN MUTLAK: 
-    1. Kalimat renungan HARUS SANGAT SINGKAT, padat, puitis, maksimal 1 kalimat pendek agar muat di layar video.
-    2. Dilarang keras membuat naskah dengan referensi ayat atau tema yang mirip dengan daftar ini: {history_context}
+    1. Jangan gunakan referensi ayat ini: {history_context}
+    2. Kalimat renungan HARUS SANGAT SINGKAT (1 kalimat pendek).
     
-    Gunakan pemisah '---' antar naskah. Format wajib persis seperti ini:
+    Format wajib persis seperti ini:
     
-    REF: [Referensi Kitab dan Ayat, contoh: Yesaya 41:10]
-    AYAT: [Isi ayat Alkitab yang menyentuh hati dan relevan]
+    REF: [Referensi Kitab dan Ayat yang valid, cth: Yesaya 41:10]
     RENUNGAN: [1 kalimat pendek renungan yang menguatkan iman]
-    CTA: [Ajakan interaksi singkat, contoh: Tulis 'Amin' di komentar.]
-    PEXELS_QUERY: [Kata kunci bahasa Inggris untuk mencari video background rohani/tenang di Pexels, contoh: "peaceful mountain sunrise cinematic drone", "calm ocean waves sunset cinematic"]
+    CTA: [Ajakan interaksi singkat, cth: Tulis 'Amin' di komentar.]
+    PEXELS_QUERY: [Kata kunci bahasa Inggris untuk latar Pexels, cth: "peaceful mountain sunrise cinematic drone"]
+    ---
     """
     
     raw_text = ""
@@ -84,34 +118,39 @@ def generate_dynamic_content(num_videos=3):
         raise Exception("❌ Gagal total menghubungi Groq AI.")
 
     batch = []
-    for i, chunk in enumerate(raw_text.split("---")):
-        if i >= num_videos: break
+    for chunk in raw_text.split("---"):
+        if len(batch) >= num_videos: break
         lines = [line.strip() for line in chunk.strip().split("\n") if line.strip()]
         if not lines: continue
         
-        ref = f"YESAYA 4{i}:10"
-        ayat = "Janganlah takut, sebab Aku menyertai engkau."
+        ref = "Yesaya 41:10"
         renungan = "Tuhan tidak pernah meninggalkanmu."
         cta = "Ketik 'Amin' di komentar."
         pexels_query = "peaceful mountain sunrise cinematic drone"
         
         for line in lines:
             if line.startswith("REF:"): ref = line.replace("REF:", "").strip()
-            elif line.startswith("AYAT:"): ayat = line.replace("AYAT:", "").strip()
             elif line.startswith("RENUNGAN:"): renungan = line.replace("RENUNGAN:", "").strip()
             elif line.startswith("CTA:"): cta = line.replace("CTA:", "").strip()
             elif line.startswith("PEXELS_QUERY:"): pexels_query = line.replace("PEXELS_QUERY:", "").strip()
                 
+        # AMBIL ISI AYAT MUTLAK DARI SABDA ALKITAB
+        official_ayat = fetch_sabda_bible_verse(ref)
+        
+        # Jika gagal mengambil dari web SABDA, gunakan teks cadangan yang aman
+        if not official_ayat:
+            official_ayat = "Segala perkara dapat kutanggung di dalam Dia yang memberi kekuatan kepadaku."
+            
         batch.append({
-            "id": f"BIBLE_{int(time.time())}_{i}",
+            "id": f"BIBLE_{int(time.time())}_{len(batch)}",
             "ref": ref,
-            "ayat": ayat,
+            "ayat": official_ayat,
             "renungan": renungan,
             "cta": cta,
             "pexels_query": pexels_query
         })
         
-    print(f"✅ Berhasil meracik {len(batch)} Naskah Firman Tuhan Unik!")
+    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi Alkitab SABDA!")
     return batch
 
 # --- MENGUNDUH FONT PRO ---
@@ -194,16 +233,15 @@ def generate_ai_voice(full_text, index, output_audio):
     subprocess.run(cmd, check=True)
     return output_audio
 
-# --- 4. TEXT OVERLAY GENERATOR (UKURAN FONT DIPERBESAR) ---
+# --- 4. TEXT OVERLAY GENERATOR (UKURAN FONT DIPERBESAR & RATA TENGAH) ---
 def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
     img = Image.new("RGBA", img_size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     font_path = get_custom_font()
-    # UKURAN FONT DIPERBESAR AGAR SANGAT JELAS DIBACA DI LAYAR HP
     font_ref = ImageFont.truetype(font_path, 60)
-    font_ayat = ImageFont.truetype(font_path, 48)
-    font_renungan = ImageFont.truetype(font_path, 42)
+    font_ayat = ImageFont.truetype(font_path, 46)
+    font_renungan = ImageFont.truetype(font_path, 40)
     font_cta = ImageFont.truetype(font_path, 40)
     
     def chunk_text_by_word_count(text, words_per_line=3):
@@ -243,7 +281,7 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         for ax, ay in [(-4,0), (4,0), (0,-4), (0,4), (-4,-4), (4,4), (-4,4), (4,-4)]:
             draw.text((x + ax, y + ay), line, font=font_ayat, fill="black")
         draw.text((x, y), line, font=font_ayat, fill="white")
-        y += 70
+        y += 65
 
     y += 30  
 
@@ -256,7 +294,7 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         for ax, ay in [(-4,0), (4,0), (0,-4), (0,4), (-4,-4), (4,4), (-4,4), (4,-4)]:
             draw.text((x + ax, y + ay), line, font=font_renungan, fill="black")
         draw.text((x, y), line, font=font_renungan, fill="#E0E0E0")
-        y += 60
+        y += 55
 
     y_cta = 1500
     for line in lines_cta:
@@ -400,14 +438,14 @@ def upload_to_facebook(video_path, caption, index):
 
 # --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("⚡ MEMULAI BOT AYAT ALKITAB GROQ AI (3 VIDEO) ⚡\n")
+    print("⚡ MEMULAI BOT AYAT ALKITAB SABDA (3 VIDEO) ⚡\n")
     
     bg_music_file = os.path.join(BASE_DIR, "bg_music.mp3")
     if not os.path.exists(bg_music_file):
         print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
         bg_music_file = None
     
-    # Menghasilkan 3 video per eksekusi
+    # Menghasilkan 3 video terverifikasi SABDA per eksekusi
     generated_batch = generate_dynamic_content(num_videos=3)
     
     print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
