@@ -6,7 +6,6 @@ import urllib.parse
 import subprocess
 import gc
 import textwrap
-from bs4 import BeautifulSoup
 from groq import Groq
 from moviepy import (
     AudioFileClip,
@@ -39,38 +38,63 @@ def mark_verse_as_used(verse_ref):
     with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
         f.write(f"{verse_ref}\n")
 
-# --- FUNGSI AMBIL AYAT RESMI DARI ALKITAB SABDA ---
-def fetch_sabda_bible_verse(reference_query):
+# --- PEMETAAN NAMA KITAB KE FORMAT API ---
+BOOK_MAPPING = {
+    "kejadian": "Gen", "keluaran": "Exod", "imamat": "Lev", "bilangan": "Num", "ulangan": "Deut",
+    "yosua": "Josh", "hakim-hakim": "Judg", "rut": "Ruth", "1 samuel": "1Sam", "2 samuel": "2Sam",
+    "1 raja-raja": "1Kgs", "2 raja-raja": "2Kgs", "1 tawarikh": "1Chr", "2 tawarikh": "2Chr",
+    "ezra": "Ezra", "nehemia": "Neh", "ester": "Esth", "ayub": "Job", "mazmur": "Ps",
+    "amsal": "Prov", "pengkhotbah": "Eccl", "kidung agung": "Song", "yesaya": "Isa", "yeremia": "Jer",
+    "ratapan": "Lam", "yehezkiel": "Ezek", "daniel": "Dan", "hosea": "Hos", "yoel": "Joel",
+    "amos": "Amos", "obaja": "Obad", "yunus": "Jonah", "mika": "Mic", "nahum": "Nah",
+    "habakuk": "Hab", "zefanya": "Zeph", "hagai": "Hag", "zakharia": "Zech", "maleakhi": "Mal",
+    "matius": "Matt", "markus": "Mark", "lukas": "Luke", "yohanes": "John", "kisah para rasul": "Acts",
+    "roma": "Rom", "1 korintus": "1Cor", "2 korintus": "2Cor", "galatia": "Gal", "efesus": "Eph",
+    "filipi": "Phil", "kolose": "Col", "1 tesalonika": "1Thess", "2 tesalonika": "2Thess",
+    "1 timotius": "1Tim", "2 timotius": "2Tim", "titus": "Titus", "filemon": "Phlm",
+    "ibrani": "Heb", "yakobus": "Jas", "1 petrus": "1Pet", "2 petrus": "2Pet",
+    "1 yohanes": "1John", "2 yohanes": "2John", "3 yohanes": "3John", "yudas": "Jude", "wahyu": "Rev"
+}
+
+# --- FUNGSI AMBIL AYAT DARI BOLLS.LIFE API (STABIL & MUDAH DIAKSES) ---
+def fetch_api_bible_verse(reference_query):
     """
-    Mengambil isi ayat Alkitab secara akurat langsung dari situs alkitab.sabda.org.
-    Jika gagal atau tidak ditemukan, mengembalikan None agar tidak terjadi kesalahan isi.
+    Mengambil isi ayat Alkitab dari API publik (bolls.life) menggunakan terjemahan TB (Indonesian).
+    Contoh input: "1 Yohanes 4:4" atau "Yesaya 41:10"
     """
-    print(f"📖 Mengambil teks resmi Alkitab SABDA untuk: {reference_query}...")
-    encoded_ref = urllib.parse.quote(reference_query)
-    url = f"https://alkitab.sabda.org/passage.php?passage={encoded_ref}"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
+    print(f"📖 Mengambil teks resmi Alkitab API untuk: {reference_query}...")
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            passage_box = soup.find('td', {'class': 'text'}) or soup.find('div', {'id': 'text'})
-            
-            if passage_box:
-                text = passage_box.get_text(separator=" ", strip=True)
-                clean_text = ' '.join(text.split())
-                if len(clean_text) > 10:
-                    print(f"✅ Berhasil memverifikasi dari SABDA: {clean_text[:60]}...")
-                    return clean_text
+        # Membersihkan teks referensi
+        ref_clean = reference_query.lower().strip()
+        
+        # Memisahkan nama kitab dengan pasal/ayat (contoh: "1 yohanes 4:4" -> "1 yohanes", "4:4")
+        for book_name, book_code in BOOK_MAPPING.items():
+            if ref_clean.startswith(book_name):
+                chapter_verse = ref_clean.replace(book_name, "").strip()
+                if ":" in chapter_verse:
+                    chapter, verse = chapter_verse.split(":")
+                    chapter = chapter.strip()
+                    verse = verse.strip()
+                    
+                    # Endpoint bolls.life untuk terjemahan TB (Indonesian)
+                    url = f"https://bolls.life/get-verse/TB/{book_code}/{chapter}/{verse}/"
+                    res = requests.get(url, timeout=10)
+                    if res.status_code == 200:
+                        data = res.json()
+                        if "text" in data:
+                            # Menghapus tag HTML jika ada di dalam teks API
+                            raw_text = data["text"]
+                            clean_text = BeautifulSoup(raw_text, "html.parser").get_text(strip=True)
+                            if len(clean_text) > 5:
+                                print(f"✅ Berhasil memverifikasi dari API: {clean_text[:60]}...")
+                                return clean_text
+        print(f"⚠️ Format atau kitab '{reference_query}' tidak dikenali oleh pemetaan API.")
     except Exception as e:
-        print(f"⚠️ Gagal menghubungkan ke SABDA Web: {e}")
+        print(f"⚠️ Gagal menghubungkan ke Alkitab API: {e}")
         
     return None
 
-# --- 1. GROQ AI: GENERATOR 3 VIDEO DENGAN VERIFIKASI KETAT ---
+# --- 1. GROQ AI: GENERATOR 3 VIDEO ---
 def generate_dynamic_content(num_videos=3):
     print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik referensi ayat & kueri video Pexels...")
     
@@ -78,7 +102,7 @@ def generate_dynamic_content(num_videos=3):
     history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat)"
     
     prompt = f"""
-    Bertindaklah sebagai pembuat konten rohani Kristen. Berikan beberapa referensi Kitab dan Ayat Alkitab yang menguatkan (contoh format: "Yesaya 41:10", "Filipi 4:6", "Mazmur 23:1"), beserta renungan singkat dan kata kunci video Pexels. Berikan cadangan referensi lebih dari {num_videos} jika diperlukan.
+    Bertindaklah sebagai pembuat konten rohani Kristen. Berikan beberapa referensi Kitab dan Ayat Alkitab populer yang menguatkan (contoh format: "Yesaya 41:10", "Filipi 4:6", "Mazmur 23:1", "1 Yohanes 4:4"), beserta renungan singkat dan kata kunci video Pexels. Berikan cadangan referensi lebih dari {num_videos} jika diperlukan.
     
     ATURAN MUTLAK: 
     1. Jangan gunakan referensi ayat ini: {history_context}
@@ -137,12 +161,11 @@ def generate_dynamic_content(num_videos=3):
         if not ref:
             continue
 
-        # AMBIL ISI AYAT MUTLAK DARI ALKITAB SABDA
-        official_ayat = fetch_sabda_bible_verse(ref)
+        # AMBIL ISI AYAT DARI ALKITAB API (BOLLS.LIFE)
+        official_ayat = fetch_api_bible_verse(ref)
         
-        # VALIDASI KETAT: Jika gagal ditarik dari SABDA, TOLAK ayat ini demi menjaga keakuratan!
         if not official_ayat:
-            print(f"❌ Peringatan: Referensi '{ref}' tidak ditemukan di SABDA Alkitab. Melewati ayat ini.")
+            print(f"❌ Peringatan: Referensi '{ref}' gagal diverifikasi di Alkitab API. Melewati ayat ini.")
             continue
             
         batch.append({
@@ -155,9 +178,9 @@ def generate_dynamic_content(num_videos=3):
         })
         
     if len(batch) == 0:
-        raise Exception("❌ Gagal mendapatkan satupun ayat terverifikasi dari situs SABDA Alkitab.")
+        raise Exception("❌ Gagal mendapatkan satupun ayat terverifikasi dari Alkitab API.")
         
-    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi 100% akurat dari Alkitab SABDA!")
+    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi 100% akurat dari Alkitab API!")
     return batch
 
 # --- MENGUNDUH FONT PRO ---
@@ -447,14 +470,14 @@ def upload_to_facebook(video_path, caption, index):
 
 # --- MAIN LOOP ---
 if __name__ == "__main__":
-    print("⚡ MEMULAI BOT AYAT ALKITAB SABDA (3 VIDEO) ⚡\n")
+    print("⚡ MEMULAI BOT AYAT ALKITAB API (3 VIDEO) ⚡\n")
     
     bg_music_file = os.path.join(BASE_DIR, "bg_music.mp3")
     if not os.path.exists(bg_music_file):
         print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
         bg_music_file = None
     
-    # Menghasilkan 3 video terverifikasi SABDA per eksekusi
+    # Menghasilkan 3 video terverifikasi API per eksekusi
     generated_batch = generate_dynamic_content(num_videos=3)
     
     print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
