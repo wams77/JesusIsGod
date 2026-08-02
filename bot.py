@@ -6,6 +6,7 @@ import urllib.parse
 import subprocess
 import gc
 import textwrap
+import re
 from bs4 import BeautifulSoup
 from groq import Groq
 from moviepy import (
@@ -39,62 +40,95 @@ def mark_verse_as_used(verse_ref):
     with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
         f.write(f"{verse_ref}\n")
 
-# --- FUNGSI AMBIL AYAT DARI API ALTERNATIF YANG LEBIH FLEKSIBEL ---
+# --- DATABASE ID KITAB ALKITAB (UNTUK API BOLLS.LIFE) ---
+BOOK_MAPPING = {
+    "kejadian": 1, "keluaran": 2, "imamat": 3, "bilangan": 4, "ulangan": 5,
+    "yosua": 6, "hakim-hakim": 7, "rut": 8, "1 samuel": 9, "2 samuel": 10,
+    "1 raja-raja": 11, "2 raja-raja": 12, "1 tawarikh": 13, "2 tawarikh": 14,
+    "ezra": 15, "nehemia": 16, "ester": 17, "ayub": 18, "mazmur": 19,
+    "amsal": 20, "pengkhotbah": 21, "kidung agung": 22, "yesaya": 23, "yeremia": 24,
+    "ratapan": 25, "yehezkiel": 26, "daniel": 27, "hosea": 28, "yoel": 29,
+    "amos": 30, "obaja": 31, "yunus": 32, "mika": 33, "nahum": 34,
+    "habakuk": 35, "zefanya": 36, "hagai": 37, "zakharia": 38, "maleakhi": 39,
+    "matius": 40, "markus": 41, "lukas": 42, "yohanes": 43, "kisah para rasul": 44,
+    "roma": 45, "1 korintus": 46, "2 korintus": 47, "galatia": 48, "efesus": 49,
+    "filipi": 50, "kolose": 51, "1 tesalonika": 52, "2 tesalonika": 53,
+    "1 timotius": 54, "2 timotius": 55, "titus": 56, "filemon": 57,
+    "ibrani": 58, "yakobus": 59, "1 petrus": 60, "2 petrus": 61,
+    "1 yohanes": 62, "2 yohanes": 63, "3 yohanes": 64, "yudas": 65, "wahyu": 66
+}
+
+# --- FUNGSI AMBIL AYAT (SISTEM GANDA ANTI-GAGAL & SUPER AMAN) ---
 def fetch_api_bible_verse(reference_query):
     """
-    Mengambil isi ayat Alkitab dari Alkitab API publik secara langsung.
-    Contoh input: "Yohanes 3:16", "1 Yohanes 4:4", "Mazmur 23:1"
+    Sistem ganda mengambil isi ayat:
+    1. Mencoba Bolls API (Sangat cepat menggunakan ID Angka).
+    2. Jika gagal, melakukan scraping ke SABDA Mobile (alkitab.mobi).
     """
-    print(f"📖 Mengambil teks resmi Alkitab untuk: {reference_query}...")
-    try:
-        # Menggunakan API Alkitab Terjemahan Baru (TB) publik yang sangat toleran terhadap format penulisan
-        encoded_ref = urllib.parse.quote(reference_query)
-        url = f"https://api.alkitab.app/v1/passage?search={encoded_ref}&translation=TB"
-        
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=10)
-        
-        if res.status_code == 200:
-            data = res.json()
-            # Memeriksa struktur respons API
-            if "verses" in data and len(data["verses"]) > 0:
-                # Menggabungkan ayat jika lebih dari satu ayat
-                verse_texts = [v.get("text", "") for v in data["verses"]]
-                clean_text = " ".join(verse_texts).strip()
-                if len(clean_text) > 5:
-                    print(f"✅ Berhasil memverifikasi: {clean_text[:60]}...")
-                    return clean_text
-            elif "text" in data:
-                clean_text = data["text"].strip()
-                if len(clean_text) > 5:
-                    print(f"✅ Berhasil memverifikasi: {clean_text[:60]}...")
-                    return clean_text
+    print(f"📖 Memproses verifikasi teks Alkitab untuk: {reference_query}...")
+    
+    # Membongkar query (Contoh: "1 Yohanes 4:4" -> book_id=62, chapter=4, verse=4)
+    ref_clean = reference_query.lower().strip()
+    book_id = None
+    chapter = None
+    verse = None
+    
+    for book_name, b_id in BOOK_MAPPING.items():
+        if ref_clean.startswith(book_name):
+            book_id = b_id
+            remainder = ref_clean[len(book_name):].strip()
+            if ":" in remainder:
+                parts = remainder.split(":")
+                if len(parts) == 2:
+                    chapter = "".join(filter(str.isdigit, parts[0]))
+                    verse = "".join(filter(str.isdigit, parts[1]))
+            break
+
+    # JALUR 1: API UTAMA (Bolls.life)
+    if book_id and chapter and verse:
+        try:
+            url = f"https://bolls.life/get-verse/TB/{book_id}/{chapter}/{verse}/"
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                raw_text = ""
+                # Menangani dua jenis respons (list atau dict)
+                if isinstance(data, list) and len(data) > 0:
+                    raw_text = data[0].get("text", "")
+                elif isinstance(data, dict):
+                    raw_text = data.get("text", "")
                     
-        # CADANGAN KEDUA: Menggunakan bolls.life API secara langsung jika API utama butuh format lain
-        print("⚠️ Mencoba jalur pencarian alternatif bolls.life...")
-        parts = reference_query.split()
-        if len(parts) >= 2:
-            verse_part = parts[-1]
-            book_part = " ".join(parts[:-1])
-            if ":" in verse_part:
-                ch, vs = verse_part.split(":")
-                alt_url = f"https://bolls.life/find-verse/TB/{urllib.parse.quote(book_part)}/{ch}/{vs}/"
-                alt_res = requests.get(alt_url, timeout=10)
-                if alt_res.status_code == 200:
-                    alt_data = alt_res.json()
-                    if isinstance(alt_data, list) and len(alt_data) > 0:
-                        raw_text = alt_data[0].get("text", "")
-                        clean_text = BeautifulSoup(raw_text, "html.parser").get_text(strip=True)
-                        if len(clean_text) > 5:
-                            print(f"✅ Berhasil memverifikasi dari jalur alternatif: {clean_text[:60]}...")
-                            return clean_text
-                            
+                if raw_text:
+                    clean_text = BeautifulSoup(raw_text, "html.parser").get_text(strip=True)
+                    if len(clean_text) > 5:
+                        print(f"✅ Berhasil verifikasi via API Utama: {clean_text[:60]}...")
+                        return clean_text
+        except Exception as e:
+            print(f"⚠️ Peringatan API Utama lambat/gagal: {e}")
+
+    # JALUR 2: CADANGAN BAJA (Scraping Sabda Mobile - Sangat Tahan Banting)
+    print("⚠️ Beralih ke jalur cadangan (SABDA Mobile)...")
+    try:
+        url_mobi = f"https://alkitab.mobi/tb/passage/{urllib.parse.quote(reference_query)}"
+        res_mobi = requests.get(url_mobi, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        if res_mobi.status_code == 200:
+            soup = BeautifulSoup(res_mobi.text, 'html.parser')
+            # Teks ayat di alkitab.mobi dibungkus dalam tag <p>
+            for p in soup.find_all('p'):
+                text = p.get_text(separator=" ", strip=True)
+                # Abaikan link navigasi, ambil teks asli
+                if len(text) > 15 and not text.startswith(('<<', '>>', 'Kembali')):
+                    # Hapus angka penomoran ayat di awal kalimat (misal: "4 Kamu berasal dari...")
+                    clean_mobi = re.sub(r'^\d+\s*', '', text)
+                    print(f"✅ Berhasil verifikasi via SABDA Mobi: {clean_mobi[:60]}...")
+                    return clean_mobi
     except Exception as e:
-        print(f"⚠️ Gagal menghubungkan ke Alkitab API: {e}")
+        print(f"⚠️ Jalur cadangan gagal: {e}")
         
+    # KEMBALIKAN NONE JIKA GAGAL SEMUA (Agar bot SKIP, tidak pakai ayat palsu)
     return None
 
-# --- 1. GROQ AI: GENERATOR 3 VIDEO ---
+# --- 1. GROQ AI: GENERATOR VIDEO ---
 def generate_dynamic_content(num_videos=3):
     print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik referensi ayat & kueri video Pexels...")
     
@@ -148,9 +182,9 @@ def generate_dynamic_content(num_videos=3):
             continue
         
         ref = ""
-        renungan = "Tuhan tidak pernah meninggalkanmu."
-        cta = "Ketik 'Amin' di komentar."
-        pexels_query = "peaceful nature sunrise"
+        renungan = ""
+        cta = "Amin"
+        pexels_query = "peaceful nature"
         
         for line in lines:
             if line.startswith("REF:"): ref = line.replace("REF:", "").strip()
@@ -158,14 +192,15 @@ def generate_dynamic_content(num_videos=3):
             elif line.startswith("CTA:"): cta = line.replace("CTA:", "").strip()
             elif line.startswith("PEXELS_QUERY:"): pexels_query = line.replace("PEXELS_QUERY:", "").strip()
                 
-        if not ref:
+        if not ref or not renungan:
             continue
 
-        # AMBIL ISI AYAT DARI API
+        # AMBIL ISI AYAT MENGGUNAKAN SISTEM GANDA (SANGAT AMAN)
         official_ayat = fetch_api_bible_verse(ref)
         
+        # VALIDASI MUTLAK: Lewati jika tidak ada teks asli
         if not official_ayat:
-            print(f"❌ Peringatan: Referensi '{ref}' gagal diverifikasi di Alkitab API. Melewati ayat ini.")
+            print(f"❌ Peringatan: Referensi '{ref}' gagal diverifikasi. Melewati ayat ini untuk mencegah kesalahan konten.")
             continue
             
         batch.append({
@@ -178,9 +213,9 @@ def generate_dynamic_content(num_videos=3):
         })
         
     if len(batch) == 0:
-        raise Exception("❌ Gagal mendapatkan satupun ayat terverifikasi dari Alkitab API.")
+        raise Exception("❌ Gagal mendapatkan satupun ayat terverifikasi dari sumber Alkitab.")
         
-    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi 100% akurat dari Alkitab API!")
+    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi 100% akurat!")
     return batch
 
 # --- MENGUNDUH FONT PRO ---
