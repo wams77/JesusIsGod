@@ -471,4 +471,79 @@ def upload_to_facebook(video_path, caption, index):
     video_fbid = init_res["video_id"]
     upload_url = init_res["upload_url"]
     
-    file_size = os.path.getsize(video
+    file_size = os.path.getsize(video_path)
+    with open(video_path, 'rb') as f:
+        video_data = f.read()
+        
+    headers = {
+        'Authorization': f'OAuth {access_token}',
+        'offset': '0',
+        'file_size': str(file_size),
+        'Content-Type': 'application/octet-stream'
+    }
+    
+    requests.post(upload_url, headers=headers, data=video_data)
+    print("   -> Menunggu server Meta memproses video (15 detik)...")
+    time.sleep(15)
+    
+    publish_url = f"https://graph.facebook.com/v18.0/{page_id}/video_reels"
+    publish_payload = {
+        "access_token": access_token,
+        "video_id": video_fbid,
+        "upload_phase": "finish",
+        "video_state": "PUBLISHED",
+        "description": caption
+    }
+    
+    pub_res = requests.post(publish_url, data=publish_payload).json()
+    if "success" in pub_res and pub_res["success"]:
+        print(f"[{index}] 🎉 BERHASIL DIUNGGAH KE FACEBOOK REELS!\n")
+    else:
+        raise Exception(f"Gagal mempublikasikan Reels: {pub_res}")
+
+# --- MAIN LOOP ---
+if __name__ == "__main__":
+    print("⚡ MEMULAI BOT AYAT ALKITAB API (3 VIDEO) ⚡\n")
+    
+    bg_music_file = os.path.join(BASE_DIR, "bg_music.mp3")
+    if not os.path.exists(bg_music_file):
+        print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
+        bg_music_file = None
+    
+    # Menghasilkan 3 video terverifikasi API per eksekusi
+    generated_batch = generate_dynamic_content(num_videos=3)
+    
+    print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
+    
+    for i, item in enumerate(generated_batch, 1):
+        try:
+            print(f"--- MENGERJAKAN VIDEO {i} DARI {len(generated_batch)} ---")
+            
+            clean_spoken_ref = fix_verse_for_tts(item['ref'])
+            suara_naskah = f"{clean_spoken_ref} \"{item['ayat']}\" {item['renungan']} {item['cta']}"
+            
+            video_bg_file = os.path.join(BASE_DIR, f"stock_bg_{i}.mp4")
+            audio_file = os.path.join(BASE_DIR, f"voice_bible_{i}.mp3")
+            video_file = os.path.join(BASE_DIR, f"final_reels_{i}.mp4")
+            
+            caption = f"📖 Renungan Harian Firman Tuhan: {item['ref']}\n\n\"{item['ayat']}\"\n\n{item['renungan']}\n\n{item['cta']}\n\n#firmantuhan #renunganharian #ayatalkitab #rohanikristen #saatteduh #reels"
+            
+            download_pexels_video(item['pexels_query'], video_bg_file)
+            generate_ai_voice(suara_naskah, i, audio_file)
+            render_short_video(video_bg_file, audio_file, item, video_file, i, bg_music_file)
+            
+            if os.path.exists(video_file) and os.path.getsize(video_file) > 50000:
+                upload_to_facebook(video_file, caption, i)
+            else:
+                raise Exception("File video hilang atau ukurannya 0 byte sebelum di-upload!")
+            
+            mark_verse_as_used(item['ref'])
+            gc.collect()
+            
+            if i < len(generated_batch):
+                print("⏳ Jeda 60 detik untuk keamanan anti-spam...\n")
+                time.sleep(60)
+                
+        except Exception as e:
+            print(f"❌ Kesalahan pada video ke-{i}: {e}\n")
+            gc.collect()
