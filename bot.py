@@ -60,14 +60,8 @@ BOOK_MAPPING = {
 
 # --- FUNGSI AMBIL AYAT (SISTEM GANDA ANTI-GAGAL & SUPER AMAN) ---
 def fetch_api_bible_verse(reference_query):
-    """
-    Sistem ganda mengambil isi ayat:
-    1. Mencoba Bolls API (Sangat cepat menggunakan ID Angka).
-    2. Jika gagal, melakukan scraping ke SABDA Mobile (alkitab.mobi).
-    """
     print(f"📖 Memproses verifikasi teks Alkitab untuk: {reference_query}...")
     
-    # Membongkar query (Contoh: "1 Yohanes 4:4" -> book_id=62, chapter=4, verse=4)
     ref_clean = reference_query.lower().strip()
     book_id = None
     chapter = None
@@ -79,7 +73,7 @@ def fetch_api_bible_verse(reference_query):
             remainder = ref_clean[len(book_name):].strip()
             if ":" in remainder:
                 parts = remainder.split(":")
-                if len(parts) == 2:
+                if len(parts) >= 2:
                     chapter = "".join(filter(str.isdigit, parts[0]))
                     verse = "".join(filter(str.isdigit, parts[1]))
             break
@@ -92,7 +86,6 @@ def fetch_api_bible_verse(reference_query):
             if res.status_code == 200:
                 data = res.json()
                 raw_text = ""
-                # Menangani dua jenis respons (list atau dict)
                 if isinstance(data, list) and len(data) > 0:
                     raw_text = data[0].get("text", "")
                 elif isinstance(data, dict):
@@ -113,22 +106,18 @@ def fetch_api_bible_verse(reference_query):
         res_mobi = requests.get(url_mobi, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         if res_mobi.status_code == 200:
             soup = BeautifulSoup(res_mobi.text, 'html.parser')
-            # Teks ayat di alkitab.mobi dibungkus dalam tag <p>
             for p in soup.find_all('p'):
                 text = p.get_text(separator=" ", strip=True)
-                # Abaikan link navigasi, ambil teks asli
                 if len(text) > 15 and not text.startswith(('<<', '>>', 'Kembali')):
-                    # Hapus angka penomoran ayat di awal kalimat (misal: "4 Kamu berasal dari...")
                     clean_mobi = re.sub(r'^\d+\s*', '', text)
                     print(f"✅ Berhasil verifikasi via SABDA Mobi: {clean_mobi[:60]}...")
                     return clean_mobi
     except Exception as e:
         print(f"⚠️ Jalur cadangan gagal: {e}")
         
-    # KEMBALIKAN NONE JIKA GAGAL SEMUA (Agar bot SKIP, tidak pakai ayat palsu)
     return None
 
-# --- 1. GROQ AI: GENERATOR VIDEO ---
+# --- 1. GROQ AI: GENERATOR VIDEO DENGAN PARSER CERDAS ---
 def generate_dynamic_content(num_videos=3):
     print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik referensi ayat & kueri video Pexels...")
     
@@ -136,18 +125,19 @@ def generate_dynamic_content(num_videos=3):
     history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat)"
     
     prompt = f"""
-    Bertindaklah sebagai pembuat konten rohani Kristen. Berikan beberapa referensi Kitab dan Ayat Alkitab populer yang menguatkan (contoh format: "Yesaya 41:10", "Filipi 4:6", "Mazmur 23:1", "1 Yohanes 4:4"), beserta renungan singkat dan kata kunci video Pexels. Berikan cadangan referensi lebih dari {num_videos} jika diperlukan.
+    Bertindaklah sebagai pembuat konten rohani Kristen. Berikan 5 ide referensi Kitab dan Ayat Alkitab populer yang menguatkan (contoh format: "Yesaya 41:10", "Filipi 4:6", "Mazmur 23:1", "1 Yohanes 4:4"), beserta renungan singkat dan kata kunci video Pexels.
     
     ATURAN MUTLAK: 
     1. Jangan gunakan referensi ayat ini: {history_context}
     2. Kalimat renungan HARUS SANGAT SINGKAT (1 kalimat pendek).
+    3. Pisahkan antar ide HANYA dengan '---'.
     
-    Format wajib persis seperti ini:
+    Gunakan format teks polos persis seperti ini (tanpa tanda bintang markdown):
     
-    REF: [Referensi Kitab dan Ayat yang valid, cth: Yesaya 41:10]
-    RENUNGAN: [1 kalimat pendek renungan yang menguatkan iman]
-    CTA: [Ajakan interaksi singkat, cth: Tulis 'Amin' di komentar.]
-    PEXELS_QUERY: [Kata kunci bahasa Inggris singkat untuk latar Pexels, cth: "peaceful nature sunrise"]
+    REF: [Referensi]
+    RENUNGAN: [Renungan]
+    CTA: [Tulis 'Amin' di komentar]
+    PEXELS_QUERY: [Kata kunci inggris]
     ---
     """
     
@@ -156,7 +146,7 @@ def generate_dynamic_content(num_videos=3):
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "Anda adalah asisten AI rohani yang patuh pada format instruksi."},
+                    {"role": "system", "content": "Anda adalah asisten AI rohani. Jangan gunakan format markdown. Selalu ikuti struktur yang diminta persis."},
                     {"role": "user", "content": prompt}
                 ],
                 model="llama-3.1-8b-instant",
@@ -164,6 +154,7 @@ def generate_dynamic_content(num_videos=3):
                 max_tokens=1500,
             )
             raw_text = chat_completion.choices[0].message.content
+            print(f"📄 Naskah mentah dari AI:\n{raw_text[:200]}...\n")
             break
         except Exception as e:
             print(f"⚠️ Error Groq (Percobaan {attempt+1}/3): {e}")
@@ -177,30 +168,38 @@ def generate_dynamic_content(num_videos=3):
     for chunk in chunks:
         if len(batch) >= num_videos: 
             break
-        lines = [line.strip() for line in chunk.strip().split("\n") if line.strip()]
-        if not lines: 
-            continue
-        
+            
         ref = ""
         renungan = ""
         cta = "Amin"
         pexels_query = "peaceful nature"
         
+        # PARSER SUPER CERDAS (Membersihkan format aneh, asterisk, spasi dll)
+        lines = chunk.strip().split("\n")
         for line in lines:
-            if line.startswith("REF:"): ref = line.replace("REF:", "").strip()
-            elif line.startswith("RENUNGAN:"): renungan = line.replace("RENUNGAN:", "").strip()
-            elif line.startswith("CTA:"): cta = line.replace("CTA:", "").strip()
-            elif line.startswith("PEXELS_QUERY:"): pexels_query = line.replace("PEXELS_QUERY:", "").strip()
+            line_clean = line.replace("**", "").replace("*", "").strip()
+            if not line_clean: continue
+            
+            if line_clean.upper().startswith("REF:"):
+                ref = line_clean[4:].strip()
+            elif line_clean.upper().startswith("RENUNGAN:"):
+                renungan = line_clean[9:].strip()
+            elif line_clean.upper().startswith("CTA:"):
+                cta = line_clean[4:].strip()
+            elif line_clean.upper().startswith("PEXELS_QUERY:"):
+                pexels_query = line_clean[13:].strip()
                 
         if not ref or not renungan:
             continue
 
-        # AMBIL ISI AYAT MENGGUNAKAN SISTEM GANDA (SANGAT AMAN)
+        print(f"🔍 Ditemukan Naskah: {ref} | {renungan[:30]}...")
+
+        # AMBIL ISI AYAT MENGGUNAKAN SISTEM GANDA
         official_ayat = fetch_api_bible_verse(ref)
         
         # VALIDASI MUTLAK: Lewati jika tidak ada teks asli
         if not official_ayat:
-            print(f"❌ Peringatan: Referensi '{ref}' gagal diverifikasi. Melewati ayat ini untuk mencegah kesalahan konten.")
+            print(f"❌ Referensi '{ref}' gagal divalidasi keasliannya. Dilewati.")
             continue
             
         batch.append({
@@ -268,7 +267,6 @@ def download_pexels_video(query, output_filename):
     except Exception as e:
         print(f"⚠️ Peringatan unduhan Pexels: {e}")
 
-    # PENCADANGAN DARURAT (FALLBACK) AGAR VIDEO TIDAK KOSONG
     print("⚠️ Menggunakan video latar cadangan universal (nature cinematic)...")
     fallback_url = "https://api.pexels.com/videos/search?query=nature+cinematic+vertical&orientation=portrait&per_page=1"
     try:
@@ -473,79 +471,4 @@ def upload_to_facebook(video_path, caption, index):
     video_fbid = init_res["video_id"]
     upload_url = init_res["upload_url"]
     
-    file_size = os.path.getsize(video_path)
-    with open(video_path, 'rb') as f:
-        video_data = f.read()
-        
-    headers = {
-        'Authorization': f'OAuth {access_token}',
-        'offset': '0',
-        'file_size': str(file_size),
-        'Content-Type': 'application/octet-stream'
-    }
-    
-    requests.post(upload_url, headers=headers, data=video_data)
-    print("   -> Menunggu server Meta memproses video (15 detik)...")
-    time.sleep(15)
-    
-    publish_url = f"https://graph.facebook.com/v18.0/{page_id}/video_reels"
-    publish_payload = {
-        "access_token": access_token,
-        "video_id": video_fbid,
-        "upload_phase": "finish",
-        "video_state": "PUBLISHED",
-        "description": caption
-    }
-    
-    pub_res = requests.post(publish_url, data=publish_payload).json()
-    if "success" in pub_res and pub_res["success"]:
-        print(f"[{index}] 🎉 BERHASIL DIUNGGAH KE FACEBOOK REELS!\n")
-    else:
-        raise Exception(f"Gagal mempublikasikan Reels: {pub_res}")
-
-# --- MAIN LOOP ---
-if __name__ == "__main__":
-    print("⚡ MEMULAI BOT AYAT ALKITAB API (3 VIDEO) ⚡\n")
-    
-    bg_music_file = os.path.join(BASE_DIR, "bg_music.mp3")
-    if not os.path.exists(bg_music_file):
-        print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
-        bg_music_file = None
-    
-    # Menghasilkan 3 video terverifikasi API per eksekusi
-    generated_batch = generate_dynamic_content(num_videos=3)
-    
-    print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
-    
-    for i, item in enumerate(generated_batch, 1):
-        try:
-            print(f"--- MENGERJAKAN VIDEO {i} DARI {len(generated_batch)} ---")
-            
-            clean_spoken_ref = fix_verse_for_tts(item['ref'])
-            suara_naskah = f"{clean_spoken_ref} \"{item['ayat']}\" {item['renungan']} {item['cta']}"
-            
-            video_bg_file = os.path.join(BASE_DIR, f"stock_bg_{i}.mp4")
-            audio_file = os.path.join(BASE_DIR, f"voice_bible_{i}.mp3")
-            video_file = os.path.join(BASE_DIR, f"final_reels_{i}.mp4")
-            
-            caption = f"📖 Renungan Harian Firman Tuhan: {item['ref']}\n\n\"{item['ayat']}\"\n\n{item['renungan']}\n\n{item['cta']}\n\n#firmantuhan #renunganharian #ayatalkitab #rohanikristen #saatteduh #reels"
-            
-            download_pexels_video(item['pexels_query'], video_bg_file)
-            generate_ai_voice(suara_naskah, i, audio_file)
-            render_short_video(video_bg_file, audio_file, item, video_file, i, bg_music_file)
-            
-            if os.path.exists(video_file) and os.path.getsize(video_file) > 50000:
-                upload_to_facebook(video_file, caption, i)
-            else:
-                raise Exception("File video hilang atau ukurannya 0 byte sebelum di-upload!")
-            
-            mark_verse_as_used(item['ref'])
-            gc.collect()
-            
-            if i < len(generated_batch):
-                print("⏳ Jeda 60 detik untuk keamanan anti-spam...\n")
-                time.sleep(60)
-                
-        except Exception as e:
-            print(f"❌ Kesalahan pada video ke-{i}: {e}\n")
-            gc.collect()
+    file_size = os.path.getsize(video
