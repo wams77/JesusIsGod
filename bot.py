@@ -6,6 +6,7 @@ import urllib.parse
 import subprocess
 import gc
 import textwrap
+from bs4 import BeautifulSoup
 from groq import Groq
 from moviepy import (
     AudioFileClip,
@@ -38,57 +39,56 @@ def mark_verse_as_used(verse_ref):
     with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
         f.write(f"{verse_ref}\n")
 
-# --- PEMETAAN NAMA KITAB KE FORMAT API ---
-BOOK_MAPPING = {
-    "kejadian": "Gen", "keluaran": "Exod", "imamat": "Lev", "bilangan": "Num", "ulangan": "Deut",
-    "yosua": "Josh", "hakim-hakim": "Judg", "rut": "Ruth", "1 samuel": "1Sam", "2 samuel": "2Sam",
-    "1 raja-raja": "1Kgs", "2 raja-raja": "2Kgs", "1 tawarikh": "1Chr", "2 tawarikh": "2Chr",
-    "ezra": "Ezra", "nehemia": "Neh", "ester": "Esth", "ayub": "Job", "mazmur": "Ps",
-    "amsal": "Prov", "pengkhotbah": "Eccl", "kidung agung": "Song", "yesaya": "Isa", "yeremia": "Jer",
-    "ratapan": "Lam", "yehezkiel": "Ezek", "daniel": "Dan", "hosea": "Hos", "yoel": "Joel",
-    "amos": "Amos", "obaja": "Obad", "yunus": "Jonah", "mika": "Mic", "nahum": "Nah",
-    "habakuk": "Hab", "zefanya": "Zeph", "hagai": "Hag", "zakharia": "Zech", "maleakhi": "Mal",
-    "matius": "Matt", "markus": "Mark", "lukas": "Luke", "yohanes": "John", "kisah para rasul": "Acts",
-    "roma": "Rom", "1 korintus": "1Cor", "2 korintus": "2Cor", "galatia": "Gal", "efesus": "Eph",
-    "filipi": "Phil", "kolose": "Col", "1 tesalonika": "1Thess", "2 tesalonika": "2Thess",
-    "1 timotius": "1Tim", "2 timotius": "2Tim", "titus": "Titus", "filemon": "Phlm",
-    "ibrani": "Heb", "yakobus": "Jas", "1 petrus": "1Pet", "2 petrus": "2Pet",
-    "1 yohanes": "1John", "2 yohanes": "2John", "3 yohanes": "3John", "yudas": "Jude", "wahyu": "Rev"
-}
-
-# --- FUNGSI AMBIL AYAT DARI BOLLS.LIFE API (STABIL & MUDAH DIAKSES) ---
+# --- FUNGSI AMBIL AYAT DARI API ALTERNATIF YANG LEBIH FLEKSIBEL ---
 def fetch_api_bible_verse(reference_query):
     """
-    Mengambil isi ayat Alkitab dari API publik (bolls.life) menggunakan terjemahan TB (Indonesian).
-    Contoh input: "1 Yohanes 4:4" atau "Yesaya 41:10"
+    Mengambil isi ayat Alkitab dari Alkitab API publik secara langsung.
+    Contoh input: "Yohanes 3:16", "1 Yohanes 4:4", "Mazmur 23:1"
     """
-    print(f"📖 Mengambil teks resmi Alkitab API untuk: {reference_query}...")
+    print(f"📖 Mengambil teks resmi Alkitab untuk: {reference_query}...")
     try:
-        # Membersihkan teks referensi
-        ref_clean = reference_query.lower().strip()
+        # Menggunakan API Alkitab Terjemahan Baru (TB) publik yang sangat toleran terhadap format penulisan
+        encoded_ref = urllib.parse.quote(reference_query)
+        url = f"https://api.alkitab.app/v1/passage?search={encoded_ref}&translation=TB"
         
-        # Memisahkan nama kitab dengan pasal/ayat (contoh: "1 yohanes 4:4" -> "1 yohanes", "4:4")
-        for book_name, book_code in BOOK_MAPPING.items():
-            if ref_clean.startswith(book_name):
-                chapter_verse = ref_clean.replace(book_name, "").strip()
-                if ":" in chapter_verse:
-                    chapter, verse = chapter_verse.split(":")
-                    chapter = chapter.strip()
-                    verse = verse.strip()
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=10)
+        
+        if res.status_code == 200:
+            data = res.json()
+            # Memeriksa struktur respons API
+            if "verses" in data and len(data["verses"]) > 0:
+                # Menggabungkan ayat jika lebih dari satu ayat
+                verse_texts = [v.get("text", "") for v in data["verses"]]
+                clean_text = " ".join(verse_texts).strip()
+                if len(clean_text) > 5:
+                    print(f"✅ Berhasil memverifikasi: {clean_text[:60]}...")
+                    return clean_text
+            elif "text" in data:
+                clean_text = data["text"].strip()
+                if len(clean_text) > 5:
+                    print(f"✅ Berhasil memverifikasi: {clean_text[:60]}...")
+                    return clean_text
                     
-                    # Endpoint bolls.life untuk terjemahan TB (Indonesian)
-                    url = f"https://bolls.life/get-verse/TB/{book_code}/{chapter}/{verse}/"
-                    res = requests.get(url, timeout=10)
-                    if res.status_code == 200:
-                        data = res.json()
-                        if "text" in data:
-                            # Menghapus tag HTML jika ada di dalam teks API
-                            raw_text = data["text"]
-                            clean_text = BeautifulSoup(raw_text, "html.parser").get_text(strip=True)
-                            if len(clean_text) > 5:
-                                print(f"✅ Berhasil memverifikasi dari API: {clean_text[:60]}...")
-                                return clean_text
-        print(f"⚠️ Format atau kitab '{reference_query}' tidak dikenali oleh pemetaan API.")
+        # CADANGAN KEDUA: Menggunakan bolls.life API secara langsung jika API utama butuh format lain
+        print("⚠️ Mencoba jalur pencarian alternatif bolls.life...")
+        parts = reference_query.split()
+        if len(parts) >= 2:
+            verse_part = parts[-1]
+            book_part = " ".join(parts[:-1])
+            if ":" in verse_part:
+                ch, vs = verse_part.split(":")
+                alt_url = f"https://bolls.life/find-verse/TB/{urllib.parse.quote(book_part)}/{ch}/{vs}/"
+                alt_res = requests.get(alt_url, timeout=10)
+                if alt_res.status_code == 200:
+                    alt_data = alt_res.json()
+                    if isinstance(alt_data, list) and len(alt_data) > 0:
+                        raw_text = alt_data[0].get("text", "")
+                        clean_text = BeautifulSoup(raw_text, "html.parser").get_text(strip=True)
+                        if len(clean_text) > 5:
+                            print(f"✅ Berhasil memverifikasi dari jalur alternatif: {clean_text[:60]}...")
+                            return clean_text
+                            
     except Exception as e:
         print(f"⚠️ Gagal menghubungkan ke Alkitab API: {e}")
         
@@ -161,7 +161,7 @@ def generate_dynamic_content(num_videos=3):
         if not ref:
             continue
 
-        # AMBIL ISI AYAT DARI ALKITAB API (BOLLS.LIFE)
+        # AMBIL ISI AYAT DARI API
         official_ayat = fetch_api_bible_verse(ref)
         
         if not official_ayat:
