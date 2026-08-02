@@ -42,7 +42,8 @@ def mark_verse_as_used(verse_ref):
 # --- FUNGSI AMBIL AYAT RESMI DARI ALKITAB SABDA ---
 def fetch_sabda_bible_verse(reference_query):
     """
-    Mengambil isi ayat Alkitab secara akurat langsung dari situs alkitab.sabda.org
+    Mengambil isi ayat Alkitab secara akurat langsung dari situs alkitab.sabda.org.
+    Jika gagal atau tidak ditemukan, mengembalikan None agar tidak terjadi kesalahan isi.
     """
     print(f"📖 Mengambil teks resmi Alkitab SABDA untuk: {reference_query}...")
     encoded_ref = urllib.parse.quote(reference_query)
@@ -56,29 +57,28 @@ def fetch_sabda_bible_verse(reference_query):
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
-            
             passage_box = soup.find('td', {'class': 'text'}) or soup.find('div', {'id': 'text'})
             
             if passage_box:
                 text = passage_box.get_text(separator=" ", strip=True)
                 clean_text = ' '.join(text.split())
                 if len(clean_text) > 10:
-                    print(f"✅ Berhasil mengambil dari SABDA: {clean_text[:60]}...")
+                    print(f"✅ Berhasil memverifikasi dari SABDA: {clean_text[:60]}...")
                     return clean_text
     except Exception as e:
-        print(f"⚠️ Gagal mengambil dari SABDA API/Web: {e}")
+        print(f"⚠️ Gagal menghubungkan ke SABDA Web: {e}")
         
     return None
 
-# --- 1. GROQ AI: GENERATOR 3 VIDEO ---
+# --- 1. GROQ AI: GENERATOR 3 VIDEO DENGAN VERIFIKASI KETAT ---
 def generate_dynamic_content(num_videos=3):
-    print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik {num_videos} referensi ayat & kueri video Pexels...")
+    print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik referensi ayat & kueri video Pexels...")
     
     used_verses = get_used_verses()
     history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat)"
     
     prompt = f"""
-    Bertindaklah sebagai pembuat konten rohani Kristen. Berikan {num_videos} referensi Kitab dan Ayat Alkitab yang menguatkan (contoh format: "Yesaya 41:10", "Filipi 4:6", "Mazmur 23:1"), beserta renungan singkat dan kata kunci video Pexels.
+    Bertindaklah sebagai pembuat konten rohani Kristen. Berikan beberapa referensi Kitab dan Ayat Alkitab yang menguatkan (contoh format: "Yesaya 41:10", "Filipi 4:6", "Mazmur 23:1"), beserta renungan singkat dan kata kunci video Pexels. Berikan cadangan referensi lebih dari {num_videos} jika diperlukan.
     
     ATURAN MUTLAK: 
     1. Jangan gunakan referensi ayat ini: {history_context}
@@ -89,7 +89,7 @@ def generate_dynamic_content(num_videos=3):
     REF: [Referensi Kitab dan Ayat yang valid, cth: Yesaya 41:10]
     RENUNGAN: [1 kalimat pendek renungan yang menguatkan iman]
     CTA: [Ajakan interaksi singkat, cth: Tulis 'Amin' di komentar.]
-    PEXELS_QUERY: [Kata kunci bahasa Inggris untuk latar Pexels, cth: "peaceful mountain sunrise cinematic drone"]
+    PEXELS_QUERY: [Kata kunci bahasa Inggris singkat untuk latar Pexels, cth: "peaceful nature sunrise"]
     ---
     """
     
@@ -114,15 +114,19 @@ def generate_dynamic_content(num_videos=3):
         raise Exception("❌ Gagal total menghubungi Groq AI.")
 
     batch = []
-    for chunk in raw_text.split("---"):
-        if len(batch) >= num_videos: break
+    chunks = raw_text.split("---")
+    
+    for chunk in chunks:
+        if len(batch) >= num_videos: 
+            break
         lines = [line.strip() for line in chunk.strip().split("\n") if line.strip()]
-        if not lines: continue
+        if not lines: 
+            continue
         
-        ref = "Yesaya 41:10"
+        ref = ""
         renungan = "Tuhan tidak pernah meninggalkanmu."
         cta = "Ketik 'Amin' di komentar."
-        pexels_query = "peaceful mountain sunrise cinematic drone"
+        pexels_query = "peaceful nature sunrise"
         
         for line in lines:
             if line.startswith("REF:"): ref = line.replace("REF:", "").strip()
@@ -130,12 +134,16 @@ def generate_dynamic_content(num_videos=3):
             elif line.startswith("CTA:"): cta = line.replace("CTA:", "").strip()
             elif line.startswith("PEXELS_QUERY:"): pexels_query = line.replace("PEXELS_QUERY:", "").strip()
                 
-        # AMBIL ISI AYAT MUTLAK DARI SABDA ALKITAB
+        if not ref:
+            continue
+
+        # AMBIL ISI AYAT MUTLAK DARI ALKITAB SABDA
         official_ayat = fetch_sabda_bible_verse(ref)
         
-        # Jika gagal mengambil dari web SABDA, gunakan teks cadangan yang aman
+        # VALIDASI KETAT: Jika gagal ditarik dari SABDA, TOLAK ayat ini demi menjaga keakuratan!
         if not official_ayat:
-            official_ayat = "Segala perkara dapat kutanggung di dalam Dia yang memberi kekuatan kepadaku."
+            print(f"❌ Peringatan: Referensi '{ref}' tidak ditemukan di SABDA Alkitab. Melewati ayat ini.")
+            continue
             
         batch.append({
             "id": f"BIBLE_{int(time.time())}_{len(batch)}",
@@ -146,7 +154,10 @@ def generate_dynamic_content(num_videos=3):
             "pexels_query": pexels_query
         })
         
-    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi Alkitab SABDA!")
+    if len(batch) == 0:
+        raise Exception("❌ Gagal mendapatkan satupun ayat terverifikasi dari situs SABDA Alkitab.")
+        
+    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi 100% akurat dari Alkitab SABDA!")
     return batch
 
 # --- MENGUNDUH FONT PRO ---
@@ -167,45 +178,56 @@ def get_custom_font():
             raise Exception(f"Gagal mengunduh font. Status Code: {r.status_code}")
     return os.path.abspath(font_filename)
 
-# --- 2. PEXELS VIDEO DOWNLOADER ---
+# --- 2. PEXELS VIDEO DOWNLOADER (DIPERKUAT DENGAN CADANGAN OTOMATIS) ---
 def download_pexels_video(query, output_filename):
     print(f"🎬 Mencari video latar rohani di Pexels untuk: '{query}'...")
     api_key = os.environ.get("PEXELS_API_KEY")
-    headers = {"Authorization": api_key}
     
-    url = f"https://api.pexels.com/videos/search?query={urllib.parse.quote(query)}&orientation=portrait&per_page=5"
+    if not api_key:
+        print("⚠️ Peringatan: PEXELS_API_KEY tidak ditemukan di environment variables!")
+    
+    headers = {"Authorization": api_key} if api_key else {}
+    safe_query = urllib.parse.quote(query.strip() if query else "peaceful nature")
+    url = f"https://api.pexels.com/videos/search?query={safe_query}&orientation=portrait&per_page=5"
     
     try:
-        response = requests.get(url, headers=headers, timeout=15).json()
-        if "videos" in response and len(response["videos"]) > 0:
-            video_obj = random.choice(response["videos"])
-            video_files = video_obj["video_files"]
-            hd_file = next((v for v in video_files if v["quality"] == "hd"), video_files[0])
-            video_url = hd_file["link"]
-            
-            vid_data = requests.get(video_url, timeout=30).content
-            with open(output_filename, 'wb') as f:
-                f.write(vid_data)
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            if "videos" in data and len(data["videos"]) > 0:
+                video_obj = random.choice(data["videos"])
+                video_files = video_obj["video_files"]
+                hd_file = next((v for v in video_files if v.get("quality") == "hd"), video_files[0])
+                video_url = hd_file["link"]
                 
-            if os.path.exists(output_filename) and os.path.getsize(output_filename) > 50000:
-                print("✅ Stok video Pexels berhasil diunduh dan divalidasi!")
-                return output_filename
+                vid_data = requests.get(video_url, timeout=30).content
+                with open(output_filename, 'wb') as f:
+                    f.write(vid_data)
+                    
+                if os.path.exists(output_filename) and os.path.getsize(output_filename) > 50000:
+                    print("✅ Stok video Pexels berhasil diunduh dan divalidasi!")
+                    return output_filename
     except Exception as e:
         print(f"⚠️ Peringatan unduhan Pexels: {e}")
 
-    print("⚠️ Menggunakan video latar cadangan universal yang tenang...")
-    fallback_url = "https://api.pexels.com/videos/search?query=peaceful+nature+sunset+drone&orientation=portrait&per_page=1"
-    fallback_res = requests.get(fallback_url, headers=headers).json()
-    
-    if "videos" in fallback_res and len(fallback_res["videos"]) > 0:
-        video_obj = fallback_res["videos"][0]
-        hd_file = video_obj["video_files"][0]
-        vid_data = requests.get(hd_file["link"], timeout=30).content
-        with open(output_filename, 'wb') as f:
-            f.write(vid_data)
-        return output_filename
+    # PENCADANGAN DARURAT (FALLBACK) AGAR VIDEO TIDAK KOSONG
+    print("⚠️ Menggunakan video latar cadangan universal (nature cinematic)...")
+    fallback_url = "https://api.pexels.com/videos/search?query=nature+cinematic+vertical&orientation=portrait&per_page=1"
+    try:
+        fallback_res = requests.get(fallback_url, headers=headers, timeout=15).json()
+        if "videos" in fallback_res and len(fallback_res["videos"]) > 0:
+            video_obj = fallback_res["videos"][0]
+            hd_file = video_obj["video_files"][0]
+            vid_data = requests.get(hd_file["link"], timeout=30).content
+            with open(output_filename, 'wb') as f:
+                f.write(vid_data)
+            if os.path.exists(output_filename) and os.path.getsize(output_filename) > 50000:
+                print("✅ Video cadangan berhasil digunakan!")
+                return output_filename
+    except Exception as ex:
+        print(f"❌ Gagal total mengambil video cadangan: {ex}")
         
-    raise Exception("Gagal total mengunduh video dari Pexels API.")
+    raise Exception("Gagal total mengunduh video dari Pexels API maupun cadangan.")
 
 # --- 3. PENGUBAH FORMAT AYAT & AI NEURAL VOICE ---
 def fix_verse_for_tts(ref_text):
@@ -229,25 +251,22 @@ def generate_ai_voice(full_text, index, output_audio):
     subprocess.run(cmd, check=True)
     return output_audio
 
-# --- 4. TEXT OVERLAY GENERATOR (CERDAS DENGAN TEXTWRAP) ---
+# --- 4. TEXT OVERLAY GENERATOR ---
 def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
     img = Image.new("RGBA", img_size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     font_path = get_custom_font()
-    # UKURAN FONT DIPERBESAR SECARA SIGNIFIKAN
     font_ref = ImageFont.truetype(font_path, 75)
     font_ayat = ImageFont.truetype(font_path, 55)
     font_renungan = ImageFont.truetype(font_path, 48)
     font_cta = ImageFont.truetype(font_path, 45)
     
-    # Textwrap berdasarkan lebar karakter agar teks selalu proporsional dan tidak keluar layar
     lines_ref = textwrap.wrap(f"✨ {item['ref']} ✨", width=22)
     lines_ayat = textwrap.wrap(f'"{item["ayat"]}"', width=28)
     lines_renungan = textwrap.wrap(item['renungan'], width=34)
     lines_cta = textwrap.wrap(f"💬 {item['cta']}", width=38)
     
-    # 1. POSISI REFERENSI AYAT
     y = 350  
     for line in lines_ref:
         try:
@@ -258,11 +277,10 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         for ax, ay in [(-4,0), (4,0), (0,-4), (0,4), (-4,-4), (4,4), (-4,4), (4,-4)]:
             draw.text((x + ax, y + ay), line, font=font_ref, fill="black")
         draw.text((x, y), line, font=font_ref, fill="#FFD700")
-        y += 95 # Spasi antar baris
+        y += 95
 
     y += 40  
 
-    # 2. POSISI ISI AYAT
     for line in lines_ayat:
         try:
             w = draw.textlength(line, font=font_ayat)
@@ -276,7 +294,6 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
 
     y += 50  
 
-    # 3. POSISI RENUNGAN
     for line in lines_renungan:
         try:
             w = draw.textlength(line, font=font_renungan)
@@ -288,7 +305,6 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
         draw.text((x, y), line, font=font_renungan, fill="#E0E0E0")
         y += 65
 
-    # 4. POSISI CTA (Dikunci di bagian bawah layar)
     y_cta = 1550
     for line in lines_cta:
         try:
