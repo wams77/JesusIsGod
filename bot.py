@@ -119,8 +119,8 @@ def fetch_api_bible_verse(reference_query):
 
 # --- 1. GROQ AI: GENERATOR VIDEO DENGAN PARSER CERDAS ---
 def generate_dynamic_content(num_videos=3):
-    # PERBAIKAN: Mengganti label Llama-3 8B menjadi LLaMA 3.3
-    print(f"🕊️ Meminta Groq LLaMA 3.3 meracik referensi ayat & kueri video Pexels...")
+    # PERBAIKAN: Menggunakan model Mixtral yang kebal limit/404 di Groq
+    print(f"🕊️ Meminta Groq (Mixtral 8x7B) meracik referensi ayat & kueri video Pexels...")
     
     used_verses = get_used_verses()
     history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat)"
@@ -150,8 +150,8 @@ def generate_dynamic_content(num_videos=3):
                     {"role": "system", "content": "Anda adalah asisten AI rohani. Jangan gunakan format markdown. Selalu ikuti struktur yang diminta persis."},
                     {"role": "user", "content": prompt}
                 ],
-                # PERBAIKAN: Menggunakan model LLaMA 3.3 terbaru
-                model="llama-3.3-70b-versatile",
+                # PERBAIKAN MODEL: Mixtral sangat stabil dan selalu aktif
+                model="mixtral-8x7b-32768",
                 temperature=0.7,
                 max_tokens=1500,
             )
@@ -176,7 +176,7 @@ def generate_dynamic_content(num_videos=3):
         cta = "Amin"
         pexels_query = "peaceful nature"
         
-        # PARSER SUPER CERDAS (Membersihkan format aneh, asterisk, spasi dll)
+        # PARSER SUPER CERDAS
         lines = chunk.strip().split("\n")
         for line in lines:
             line_clean = line.replace("**", "").replace("*", "").strip()
