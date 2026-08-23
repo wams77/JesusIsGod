@@ -99,7 +99,7 @@ def fetch_api_bible_verse(reference_query):
         except Exception as e:
             print(f"⚠️ Peringatan API Utama lambat/gagal: {e}")
 
-    # JALUR 2: CADANGAN BAJA (Scraping Sabda Mobile - Sangat Tahan Banting)
+    # JALUR 2: CADANGAN BAJA (Scraping Sabda Mobile)
     print("⚠️ Beralih ke jalur cadangan (SABDA Mobile)...")
     try:
         url_mobi = f"https://alkitab.mobi/tb/passage/{urllib.parse.quote(reference_query)}"
@@ -117,9 +117,8 @@ def fetch_api_bible_verse(reference_query):
         
     return None
 
-# --- 1. GROQ AI: GENERATOR VIDEO DENGAN PARSER CERDAS ---
+# --- 1. GROQ AI: GENERATOR VIDEO ---
 def generate_dynamic_content(num_videos=3):
-    # PERBAIKAN: Menggunakan model GPT-OSS 120B sesuai rekomendasi Groq
     print(f"🕊️ Meminta Groq (GPT-OSS 120B) meracik referensi ayat & kueri video Pexels...")
     
     used_verses = get_used_verses()
@@ -138,7 +137,7 @@ def generate_dynamic_content(num_videos=3):
     REF: [Referensi]
     RENUNGAN: [Renungan]
     CTA: [Tulis 'Amin' di komentar]
-    PEXELS_QUERY: [Kata kunci inggris]
+    PEXELS_QUERY: [Kata kunci inggris sederhana, contoh: nature, sky, ocean, mountain]
     ---
     """
     
@@ -150,13 +149,11 @@ def generate_dynamic_content(num_videos=3):
                     {"role": "system", "content": "Anda adalah asisten AI rohani. Jangan gunakan format markdown. Selalu ikuti struktur yang diminta persis."},
                     {"role": "user", "content": prompt}
                 ],
-                # PERBAIKAN MODEL
                 model="openai/gpt-oss-120b",
                 temperature=0.7,
                 max_tokens=1500,
             )
             raw_text = chat_completion.choices[0].message.content
-            print(f"📄 Naskah mentah dari AI:\n{raw_text[:200]}...\n")
             break
         except Exception as e:
             print(f"⚠️ Error Groq (Percobaan {attempt+1}/3): {e}")
@@ -174,9 +171,8 @@ def generate_dynamic_content(num_videos=3):
         ref = ""
         renungan = ""
         cta = "Amin"
-        pexels_query = "peaceful nature"
+        pexels_query = "nature"
         
-        # PARSER SUPER CERDAS
         lines = chunk.strip().split("\n")
         for line in lines:
             line_clean = line.replace("**", "").replace("*", "").strip()
@@ -194,14 +190,8 @@ def generate_dynamic_content(num_videos=3):
         if not ref or not renungan:
             continue
 
-        print(f"🔍 Ditemukan Naskah: {ref} | {renungan[:30]}...")
-
-        # AMBIL ISI AYAT MENGGUNAKAN SISTEM GANDA
         official_ayat = fetch_api_bible_verse(ref)
-        
-        # VALIDASI MUTLAK: Lewati jika tidak ada teks asli
         if not official_ayat:
-            print(f"❌ Referensi '{ref}' gagal divalidasi keasliannya. Dilewati.")
             continue
             
         batch.append({
@@ -216,7 +206,6 @@ def generate_dynamic_content(num_videos=3):
     if len(batch) == 0:
         raise Exception("❌ Gagal mendapatkan satupun ayat terverifikasi dari sumber Alkitab.")
         
-    print(f"✅ Berhasil menyiapkan {len(batch)} Naskah terverifikasi 100% akurat!")
     return batch
 
 # --- MENGUNDUH FONT PRO ---
@@ -232,60 +221,57 @@ def get_custom_font():
         if r.status_code == 200:
             with open(font_filename, 'wb') as f:
                 f.write(r.content)
-            print("✅ Font berhasil diunduh dengan sempurna!")
-        else:
-            raise Exception(f"Gagal mengunduh font. Status Code: {r.status_code}")
     return os.path.abspath(font_filename)
 
-# --- 2. PEXELS VIDEO DOWNLOADER (DIPERKUAT DENGAN CADANGAN OTOMATIS) ---
+# --- 2. PEXELS VIDEO DOWNLOADER (SISTEM MULTI-TIER ANTI-GAGAL) ---
 def download_pexels_video(query, output_filename):
-    print(f"🎬 Mencari video latar rohani di Pexels untuk: '{query}'...")
+    print(f"🎬 Mencari video latar Pexels untuk query: '{query}'...")
     api_key = os.environ.get("PEXELS_API_KEY")
-    
-    if not api_key:
-        print("⚠️ Peringatan: PEXELS_API_KEY tidak ditemukan di environment variables!")
-    
     headers = {"Authorization": api_key} if api_key else {}
-    safe_query = urllib.parse.quote(query.strip() if query else "peaceful nature")
-    url = f"https://api.pexels.com/videos/search?query={safe_query}&orientation=portrait&per_page=5"
     
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            if "videos" in data and len(data["videos"]) > 0:
-                video_obj = random.choice(data["videos"])
-                video_files = video_obj["video_files"]
-                hd_file = next((v for v in video_files if v.get("quality") == "hd"), video_files[0])
-                video_url = hd_file["link"]
-                
-                vid_data = requests.get(video_url, timeout=30).content
-                with open(output_filename, 'wb') as f:
-                    f.write(vid_data)
+    # Daftar kata kunci cadangan berjenjang jika query utama kosong/gagal
+    search_queries = [query, "nature", "sky", "water", "abstract background"]
+    
+    for q in search_queries:
+        try:
+            safe_query = urllib.parse.quote(q.strip() if q else "nature")
+            url = f"https://api.pexels.com/videos/search?query={safe_query}&orientation=portrait&per_page=10"
+            response = requests.get(url, headers=headers, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if "videos" in data and len(data["videos"]) > 0:
+                    video_obj = random.choice(data["videos"])
+                    video_files = video_obj["video_files"]
                     
-                if os.path.exists(output_filename) and os.path.getsize(output_filename) > 50000:
-                    print("✅ Stok video Pexels berhasil diunduh dan divalidasi!")
-                    return output_filename
-    except Exception as e:
-        print(f"⚠️ Peringatan unduhan Pexels: {e}")
+                    # Ambil kualitas terbaik yang tersedia (utamakan HD atau file pertama)
+                    hd_file = next((v for v in video_files if v.get("quality") == "hd"), video_files[0])
+                    video_url = hd_file["link"]
+                    
+                    vid_data = requests.get(video_url, timeout=30).content
+                    with open(output_filename, 'wb') as f:
+                        f.write(vid_data)
+                        
+                    if os.path.exists(output_filename) and os.path.getsize(output_filename) > 50000:
+                        print(f"✅ Berhasil mengunduh video Pexels menggunakan keyword: '{q}'")
+                        return output_filename
+        except Exception as e:
+            print(f"⚠️ Coba keyword '{q}' gagal: {e}")
+            continue
 
-    print("⚠️ Menggunakan video latar cadangan universal (nature cinematic)...")
-    fallback_url = "https://api.pexels.com/videos/search?query=nature+cinematic+vertical&orientation=portrait&per_page=1"
+    # JALUR DARURAT TERAKHIR: Mengambil video umum langsung dari URL publik Pexels jika API habis/gagal
+    print("⚠️ Menggunakan video darurat langsung...")
+    emergency_url = "https://videos.pexels.com/video-files/855392/855392-uhd_2560_1440_25fps.mp4"
     try:
-        fallback_res = requests.get(fallback_url, headers=headers, timeout=15).json()
-        if "videos" in fallback_res and len(fallback_res["videos"]) > 0:
-            video_obj = fallback_res["videos"][0]
-            hd_file = video_obj["video_files"][0]
-            vid_data = requests.get(hd_file["link"], timeout=30).content
-            with open(output_filename, 'wb') as f:
-                f.write(vid_data)
-            if os.path.exists(output_filename) and os.path.getsize(output_filename) > 50000:
-                print("✅ Video cadangan berhasil digunakan!")
-                return output_filename
-    except Exception as ex:
-        print(f"❌ Gagal total mengambil video cadangan: {ex}")
+        vid_data = requests.get(emergency_url, timeout=30).content
+        with open(output_filename, 'wb') as f:
+            f.write(vid_data)
+        if os.path.exists(output_filename) and os.path.getsize(output_filename) > 50000:
+            return output_filename
+    except Exception:
+        pass
         
-    raise Exception("Gagal total mengunduh video dari Pexels API maupun cadangan.")
+    raise Exception("Gagal total mengunduh video latar Pexels.")
 
 # --- 3. PENGUBAH FORMAT AYAT & AI NEURAL VOICE ---
 def fix_verse_for_tts(ref_text):
@@ -382,16 +368,10 @@ def create_text_overlay_image(item, output_path, img_size=(1080, 1920)):
 def render_short_video(bg_video_path, audio_path, item, output_video, index, bg_music_path=None):
     print(f"[{index}] 🎬 Merakit video latar Pexels, Teks & Musik...")
     
-    if not os.path.exists(audio_path) or os.path.getsize(audio_path) < 1000:
-        raise Exception(f"File audio {audio_path} tidak valid atau kosong!")
-    if not os.path.exists(bg_video_path) or os.path.getsize(bg_video_path) < 50000:
-        raise Exception(f"File video latar {bg_video_path} tidak valid atau kosong!")
-
     voice_audio = AudioFileClip(audio_path)
     video_duration = voice_audio.duration + 1.5 
     
     if bg_music_path and os.path.exists(bg_music_path):
-        print("   -> Memasang musik latar belakang rohani...")
         bg_music = AudioFileClip(bg_music_path).with_duration(video_duration).with_volume_scaled(0.12)
         final_audio = CompositeAudioClip([voice_audio, bg_music])
     else:
@@ -399,6 +379,7 @@ def render_short_video(bg_video_path, audio_path, item, output_video, index, bg_
     
     video_clip = VideoFileClip(bg_video_path)
     
+    # Loop video otomatis jika durasinya lebih pendek dari suara audio
     if video_clip.duration < video_duration:
         n_loops = int(video_duration // video_clip.duration) + 1
         video_clip = concatenate_videoclips([video_clip] * n_loops)
@@ -411,9 +392,6 @@ def render_short_video(bg_video_path, audio_path, item, output_video, index, bg_
     txt_img_path = os.path.join(BASE_DIR, f"text_overlay_temp_{index}.png")
     create_text_overlay_image(item, txt_img_path)
     
-    if not os.path.exists(txt_img_path) or os.path.getsize(txt_img_path) == 0:
-        raise Exception("Gagal membuat gambar overlay teks!")
-        
     txt_clip = ImageClip(txt_img_path).with_duration(video_duration)
     
     progress_bar = ColorClip(size=(1080, 15), color=(255, 215, 0)).with_duration(video_duration)
@@ -445,16 +423,7 @@ def render_short_video(bg_video_path, audio_path, item, output_video, index, bg_
     except Exception:
         pass
         
-    time.sleep(7)
-    
-    file_size = os.path.getsize(output_video) if os.path.exists(output_video) else 0
-    print(f"📁 Ukuran file {output_video}: {file_size} bytes")
-    
-    if file_size < 50000:
-        if os.path.exists(output_video):
-            os.remove(output_video)
-        raise Exception(f"File {output_video} gagal dibuat atau ukurannya korup/0 byte!")
-        
+    time.sleep(5)
     return output_video, video_duration
 
 # --- 6. FACEBOOK UPLOADER ---
@@ -485,7 +454,6 @@ def upload_to_facebook(video_path, caption, index):
     }
     
     requests.post(upload_url, headers=headers, data=video_data)
-    print("   -> Menunggu server Meta memproses video (15 detik)...")
     time.sleep(15)
     
     publish_url = f"https://graph.facebook.com/v18.0/{page_id}/video_reels"
@@ -509,10 +477,8 @@ if __name__ == "__main__":
     
     bg_music_file = os.path.join(BASE_DIR, "bg_music.mp3")
     if not os.path.exists(bg_music_file):
-        print("⚠️ Info: File 'bg_music.mp3' tidak ditemukan. Video akan berjalan tanpa musik latar.")
         bg_music_file = None
     
-    # Menghasilkan 3 video terverifikasi API per eksekusi
     generated_batch = generate_dynamic_content(num_videos=3)
     
     print(f"⚡ MEMPROSES {len(generated_batch)} VIDEO BARU ⚡\n")
