@@ -119,7 +119,8 @@ def fetch_api_bible_verse(reference_query):
 
 # --- 1. GROQ AI: GENERATOR VIDEO DENGAN PARSER CERDAS ---
 def generate_dynamic_content(num_videos=3):
-    print(f"🕊️ Meminta Groq Llama-3 (8B Instant) meracik referensi ayat & kueri video Pexels...")
+    # PERBAIKAN: Mengganti label Llama-3 8B menjadi LLaMA 3.3
+    print(f"🕊️ Meminta Groq LLaMA 3.3 meracik referensi ayat & kueri video Pexels...")
     
     used_verses = get_used_verses()
     history_context = "\n".join(used_verses[-30:]) if used_verses else "(Belum ada riwayat)"
@@ -149,7 +150,8 @@ def generate_dynamic_content(num_videos=3):
                     {"role": "system", "content": "Anda adalah asisten AI rohani. Jangan gunakan format markdown. Selalu ikuti struktur yang diminta persis."},
                     {"role": "user", "content": prompt}
                 ],
-                model="llama-3.1-8b-instant",
+                # PERBAIKAN: Menggunakan model LLaMA 3.3 terbaru
+                model="llama-3.3-70b-versatile",
                 temperature=0.7,
                 max_tokens=1500,
             )
